@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import GuessBox from '@/components/GuessBox';
@@ -11,10 +11,10 @@ type Tree = {
   date: string;
   image_url: string;
   accepted_answers: string[];
-  created_at: string; // NEW
+  created_at: string;
 };
 
-export default function Page() {
+function HomeInner() {
   const params = useSearchParams();
   const [tree, setTree] = useState<Tree | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,16 +31,14 @@ export default function Page() {
       setLoading(true);
       setError(null);
 
-      // 1) Try the requested date (or today if none provided)
       const { data, error } = await supabase
         .from('trees')
-        .select('id,date,image_url,accepted_answers,created_at') // include created_at
+        .select('id,date,image_url,accepted_answers,created_at')
         .eq('date', desiredDate)
         .limit(1)
         .maybeSingle();
 
       if (error || !data) {
-        // 2) Fallback to latest if nothing found (useful while seeding)
         const { data: latest } = await supabase
           .from('trees')
           .select('id,date,image_url,accepted_answers,created_at')
@@ -56,7 +54,7 @@ export default function Page() {
     };
 
     load();
-  }, [desiredDate]); // refetch when ?date=… changes
+  }, [desiredDate]);
 
   useEffect(() => {
     if (!tree) return;
@@ -89,7 +87,6 @@ export default function Page() {
     }
   };
 
-  // Cache-bust image using created_at (or date) so updates show immediately
   const imgSrc = useMemo(() => {
     if (!tree) return '/placeholder-tree.jpg';
     const v = encodeURIComponent(tree.created_at || tree.date);
@@ -154,5 +151,13 @@ export default function Page() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<main className="p-6">Loading…</main>}>
+      <HomeInner />
+    </Suspense>
   );
 }

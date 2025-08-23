@@ -1,9 +1,9 @@
 'use client';
 
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
 
-export default function ContentWarningPage() {
+function ContentWarningInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [returnTo, setReturnTo] = useState<string>('/');
@@ -16,7 +16,6 @@ export default function ContentWarningPage() {
   }, [params]);
 
   const accept = () => {
-    // Set a simple consent cookie for 1 year
     const oneYear = 365 * 24 * 60 * 60;
     document.cookie = `content-ok=true; Max-Age=${oneYear}; Path=/; SameSite=Lax`;
     router.replace(returnTo);
@@ -53,5 +52,13 @@ export default function ContentWarningPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ContentWarningPage() {
+  return (
+    <Suspense fallback={<main className="p-6">Loading…</main>}>
+      <ContentWarningInner />
+    </Suspense>
   );
 }
