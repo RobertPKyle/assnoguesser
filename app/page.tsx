@@ -1,103 +1,158 @@
-import Image from "next/image";
+'use client';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
+import GuessBox from '@/components/GuessBox';
+import Leaderboard from '@/components/Leaderboard';
+import Timer from '@/components/Timer';
 
-export default function Home() {
+type Tree = {
+  id: number;
+  date: string;
+  image_url: string;
+  accepted_answers: string[];
+  created_at: string; // NEW
+};
+
+export default function Page() {
+  const params = useSearchParams();
+  const [tree, setTree] = useState<Tree | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [solved, setSolved] = useState(false);
+  const [finalMs, setFinalMs] = useState<number | null>(null);
+  const [name, setName] = useState('');
+  const [justSolved, setJustSolved] = useState(false);
+
+  const desiredDate = params.get('date') || new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+
+      // 1) Try the requested date (or today if none provided)
+      const { data, error } = await supabase
+        .from('trees')
+        .select('id,date,image_url,accepted_answers,created_at') // include created_at
+        .eq('date', desiredDate)
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) {
+        // 2) Fallback to latest if nothing found (useful while seeding)
+        const { data: latest } = await supabase
+          .from('trees')
+          .select('id,date,image_url,accepted_answers,created_at')
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latest) setTree(latest);
+        else setError('No tree configured.');
+      } else {
+        setTree(data);
+      }
+      setLoading(false);
+    };
+
+    load();
+  }, [desiredDate]); // refetch when ?date=… changes
+
+  useEffect(() => {
+    if (!tree) return;
+    const solvedKey = `tree-${tree.id}-solved`;
+    const v = localStorage.getItem(solvedKey);
+    if (v) {
+      setSolved(true);
+      setFinalMs(Number(v) - Number(localStorage.getItem(`tree-${tree.id}-start`)));
+    } else {
+      setSolved(false);
+      setFinalMs(null);
+    }
+  }, [tree]);
+
+  const onCorrect = () => {
+    if (!tree) return;
+    const solvedKey = `tree-${tree.id}-solved`;
+    if (!localStorage.getItem(solvedKey)) {
+      localStorage.setItem(solvedKey, String(Date.now()));
+    }
+    setSolved(true);
+    setJustSolved(true);
+  };
+
+  const onTick = () => {
+    if (solved && finalMs == null && tree) {
+      const start = Number(localStorage.getItem(`tree-${tree.id}-start`) || Date.now());
+      const stop = Number(localStorage.getItem(`tree-${tree.id}-solved`) || Date.now());
+      setFinalMs(Math.max(0, stop - start));
+    }
+  };
+
+  // Cache-bust image using created_at (or date) so updates show immediately
+  const imgSrc = useMemo(() => {
+    if (!tree) return '/placeholder-tree.jpg';
+    const v = encodeURIComponent(tree.created_at || tree.date);
+    return `${tree.image_url}${tree.image_url.includes('?') ? '&' : '?'}v=${v}`;
+  }, [tree]);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main>
+      {loading && <div className="p-6">Loading…</div>}
+      {error && <div className="p-6 text-red-400">{error}</div>}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      {tree && (
+        <div className="space-y-6">
+          <div className="aspect-[4/3] relative w-full overflow-hidden rounded-xl border border-gray-800 bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imgSrc} alt="Today's tree" className="absolute inset-0 h-full w-full object-contain" />
+          </div>
+
+          <GuessBox acceptedAnswers={tree.accepted_answers} onCorrect={onCorrect} />
+
+          <div className="flex items-center justify-between">
+            <Timer treeId={tree.id} solved={solved} onTick={onTick} />
+            <div className="text-sm text-gray-400">Date: {tree.date}</div>
+          </div>
+
+          {solved && (
+            <div className="rounded-lg border border-emerald-800 bg-emerald-950/40 p-4">
+              <h3 className="font-semibold mb-2">You solved it! 🎉 Add your name to the board:</h3>
+              <div className="flex items-center gap-2">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                  className="flex-1 rounded-lg bg-gray-900 border border-gray-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <button
+                  onClick={async () => {
+                    if (!tree || finalMs == null || name.trim().length === 0) return;
+                    const { error } = await supabase.from('solves').insert({
+                      tree_id: tree.id,
+                      name: name.trim().slice(0, 32),
+                      time_ms: finalMs,
+                    });
+                    if (!error) {
+                      setName('');
+                      setJustSolved(false);
+                    } else {
+                      alert('Failed to submit your time. Please try again.');
+                    }
+                  }}
+                  disabled={!justSolved && name.trim() === ''}
+                  className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-medium"
+                >
+                  Submit
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">(Your time is captured automatically.)</p>
+            </div>
+          )}
+
+          <Leaderboard treeId={tree.id} />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      )}
+    </main>
   );
 }
