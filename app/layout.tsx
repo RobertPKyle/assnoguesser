@@ -1,5 +1,6 @@
 import './globals.css';
 import type { ReactNode } from 'react';
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata = {
   title: 'Assnoguesser',
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
              </a>
           </header>
           {children}
+          <Analytics />
           <footer className="py-10 text-center text-xs text-gray-500">
           </footer>
         </div>
